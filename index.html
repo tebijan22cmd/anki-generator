@@ -1,0 +1,892 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>UKMLA Anki Deck Generator</title>
+  <style>
+    :root {
+      --bg: #f5f6f8;
+      --card: #ffffff;
+      --field: #f8f9fb;
+      --text: #1d2330;
+      --muted: #6b7280;
+      --border: #d9dde4;
+      --accent: #2f6fed;
+      --accent-hover: #2358c4;
+      --accent-soft: #e8efff;
+      --error: #c53030;
+      --success: #2f855a;
+      --success-soft: #e6f4ec;
+      --warn: #975a16;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #14171c;
+        --card: #1d2128;
+        --field: #171a20;
+        --text: #e7e9ee;
+        --muted: #9aa3b2;
+        --border: #343a45;
+        --accent: #5b8cff;
+        --accent-hover: #7aa2ff;
+        --accent-soft: #1f2a44;
+        --error: #fc8181;
+        --success: #68d391;
+        --success-soft: #1a2e24;
+        --warn: #f6c06b;
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      padding: 32px 16px;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      line-height: 1.5;
+    }
+    main { width: 100%; max-width: 640px; }
+    .panel {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 32px;
+    }
+    .panel + .panel { margin-top: 20px; }
+    h1 { margin: 0 0 4px; font-size: 1.5rem; }
+    h2 { margin: 0; font-size: 1.1rem; }
+    .subtitle { margin: 0 0 24px; color: var(--muted); }
+    .field { margin-bottom: 24px; }
+    .label { display: block; font-weight: 600; margin-bottom: 6px; }
+    .hint { font-size: 0.85rem; color: var(--muted); margin-top: 4px; }
+    input[type="number"], input[type="text"], textarea, select {
+      padding: 10px 12px;
+      font: inherit;
+      color: var(--text);
+      background: var(--field);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+    }
+    input[type="text"], textarea { width: 100%; }
+    input[type="number"] { width: 110px; }
+    textarea { min-height: 150px; resize: vertical; }
+    input:focus-visible, textarea:focus-visible, select:focus-visible, button:focus-visible,
+    summary:focus-visible, .dropzone:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 1px;
+    }
+
+    /* Step headings */
+    .step { display: flex; align-items: center; gap: 10px; margin: 0 0 14px; }
+    .step-num {
+      flex: none; width: 26px; height: 26px; border-radius: 50%;
+      background: var(--accent); color: #fff; font-size: 0.85rem; font-weight: 700;
+      display: grid; place-items: center;
+    }
+    .divider { border: none; border-top: 1px solid var(--border); margin: 28px 0; }
+
+    /* Anki connection light */
+    .head-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+    .anki-status {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 5px 12px; border: 1px solid var(--border); border-radius: 999px;
+      font-size: 0.82rem; color: var(--muted); background: var(--field); white-space: nowrap;
+    }
+    .light { width: 10px; height: 10px; border-radius: 50%; background: #9aa3b2; flex: none; }
+    .anki-status[data-state="connected"] .light { background: #38a169; box-shadow: 0 0 0 3px rgba(56,161,105,.25); }
+    .anki-status[data-state="disconnected"] .light { background: #e53e3e; box-shadow: 0 0 0 3px rgba(229,62,62,.2); }
+    .anki-status[data-state="checking"] .light { animation: pulse 1s ease-in-out infinite; }
+    @keyframes pulse { 50% { opacity: .35; } }
+
+    /* Segmented control for exact / range */
+    .segmented { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; margin-bottom: 12px; }
+    .segmented input { position: absolute; opacity: 0; pointer-events: none; }
+    .segmented label { padding: 6px 16px; cursor: pointer; font-size: 0.9rem; color: var(--muted); user-select: none; }
+    .segmented input:checked + label { background: var(--accent); color: #fff; }
+    .segmented input:focus-visible + label { outline: 2px solid var(--accent); outline-offset: -2px; }
+    .range-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .range-row span { color: var(--muted); }
+
+    .checkbox { display: flex; gap: 10px; align-items: flex-start; }
+    .checkbox input { width: 18px; height: 18px; margin-top: 3px; accent-color: var(--accent); cursor: pointer; }
+    .checkbox label { cursor: pointer; }
+    .sub-option {
+      margin: 12px 0 0 28px; padding: 12px 14px; background: var(--accent-soft); border-radius: 8px;
+      display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    }
+
+    /* Drop zone */
+    .dropzone {
+      border: 2px dashed var(--border); border-radius: 10px; padding: 28px 16px; text-align: center;
+      cursor: pointer; color: var(--muted); transition: border-color .15s, background .15s;
+    }
+    .dropzone:hover, .dropzone.dragover { border-color: var(--accent); background: var(--accent-soft); }
+    .dropzone strong { color: var(--accent); }
+    .dropzone svg { display: block; margin: 0 auto 8px; }
+    .thumbs { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 10px; margin-top: 12px; }
+    .thumb { position: relative; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--field); }
+    .thumb img { width: 100%; aspect-ratio: 1; object-fit: cover; display: block; }
+    .thumb .name { font-size: 0.72rem; padding: 3px 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--muted); }
+    .thumb .num {
+      position: absolute; top: 4px; left: 4px; min-width: 22px; height: 22px; padding: 0 6px;
+      border-radius: 11px; background: var(--accent); color: #fff; font-size: 0.75rem; font-weight: 700;
+      display: grid; place-items: center;
+    }
+    .thumb button {
+      position: absolute; top: 4px; right: 4px; width: 24px; height: 24px; padding: 0;
+      border-radius: 50%; border: none; background: rgba(0,0,0,.65); color: #fff;
+      font-size: 14px; line-height: 24px; cursor: pointer;
+    }
+
+    /* Buttons */
+    .btn {
+      width: 100%; padding: 12px; font: inherit; font-weight: 600; color: #fff; background: var(--accent);
+      border: none; border-radius: 8px; cursor: pointer;
+      display: flex; align-items: center; justify-content: center; gap: 10px; text-decoration: none;
+    }
+    .btn:hover:not(:disabled) { background: var(--accent-hover); }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-send { background: var(--success); font-size: 1.05rem; padding: 14px; }
+    .btn-send:hover:not(:disabled) { background: var(--success); filter: brightness(1.08); }
+    .btn-secondary { background: transparent; color: var(--accent); border: 1px solid var(--border); margin-top: 10px; }
+    .btn-secondary:hover:not(:disabled) { background: var(--accent-soft); }
+    .spinner {
+      width: 16px; height: 16px; border: 2px solid rgba(255,255,255,0.4); border-top-color: #fff;
+      border-radius: 50%; animation: spin 0.8s linear infinite;
+    }
+    .btn-secondary .spinner { border-color: var(--border); border-top-color: var(--accent); }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .status { margin-top: 12px; font-size: 0.92rem; min-height: 1.4em; color: var(--muted); }
+    .status.error { color: var(--error); }
+    .status.ok { color: var(--success); }
+    .counter { float: right; font-weight: normal; color: var(--muted); font-size: 0.85rem; }
+
+    details { margin-top: 14px; }
+    summary { cursor: pointer; font-weight: 600; font-size: 0.92rem; }
+    #prompt-preview { min-height: 200px; margin-top: 10px; font: 0.8rem/1.4 ui-monospace, Menlo, Consolas, monospace; }
+
+    /* Parse summary */
+    .parse { margin-top: 10px; padding: 10px 12px; border-radius: 8px; font-size: 0.9rem; background: var(--field); border: 1px solid var(--border); color: var(--muted); }
+    .parse.ok { background: var(--success-soft); border-color: transparent; color: var(--success); }
+    .parse.bad { color: var(--error); }
+    .parse .note { display: block; margin-top: 4px; color: var(--warn); }
+
+    /* Results */
+    .result-head { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; }
+    .result-icon { flex: none; width: 40px; height: 40px; border-radius: 50%; background: var(--success-soft); color: var(--success); display: grid; place-items: center; }
+    .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 10px; margin-bottom: 20px; }
+    .stat { background: var(--field); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; }
+    .stat b { display: block; font-size: 1.4rem; }
+    .stat span { font-size: 0.8rem; color: var(--muted); }
+    .warnings { margin: 0 0 16px; padding-left: 18px; color: var(--warn); font-size: 0.9rem; }
+    .alert { margin-bottom: 16px; padding: 10px 12px; border-radius: 8px; font-size: 0.9rem; background: var(--field); border: 1px solid var(--error); color: var(--error); }
+    .preview-card { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; margin-top: 10px; font-size: 0.92rem; }
+    .preview-card .type { font-size: 0.72rem; text-transform: uppercase; letter-spacing: .05em; color: var(--accent); font-weight: 600; }
+    .preview-card .back { color: var(--muted); margin-top: 4px; }
+    /* Sources (documents + YouTube) */
+    .yt-row { display: flex; gap: 8px; margin-top: 12px; }
+    .yt-row input { flex: 1; min-width: 0; }
+    .yt-row button {
+      flex: none; padding: 0 18px; font: inherit; font-weight: 600; color: var(--accent);
+      background: transparent; border: 1px solid var(--border); border-radius: 8px; cursor: pointer;
+    }
+    .yt-row button:hover:not(:disabled) { background: var(--accent-soft); }
+    .yt-row button:disabled { opacity: .5; cursor: not-allowed; }
+    .chips { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 8px; }
+    .chip {
+      display: flex; align-items: center; gap: 10px; padding: 8px 10px;
+      border: 1px solid var(--border); border-radius: 8px; background: var(--field);
+    }
+    .chip .kind {
+      flex: none; min-width: 52px; text-align: center; padding: 2px 8px; border-radius: 6px;
+      background: var(--accent-soft); color: var(--accent); font-size: 0.7rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+    }
+    .chip .body { flex: 1; min-width: 0; }
+    .chip .title { font-size: 0.9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .chip .meta { font-size: 0.78rem; color: var(--muted); }
+    .chip .meta .warn { color: var(--warn); }
+    .chip button {
+      flex: none; width: 24px; height: 24px; padding: 0; border-radius: 50%; border: none;
+      background: transparent; color: var(--muted); font-size: 18px; line-height: 24px; cursor: pointer;
+    }
+    .chip button:hover { background: var(--border); color: var(--text); }
+    .chip .spinner { border-color: var(--border); border-top-color: var(--accent); flex: none; }
+    .chip.pending .title { color: var(--muted); }
+    .src-total { margin-top: 10px; font-size: 0.82rem; color: var(--muted); }
+    .src-total.warn { color: var(--warn); }
+    @media (max-width: 480px) { .panel { padding: 22px 18px; } }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="panel">
+      <div class="head-row">
+        <h1>UKMLA Anki Deck Generator</h1>
+        <div class="anki-status" id="anki-status" data-state="checking" role="status"
+             title="Detected through the AnkiConnect add-on (code 2055492159). Anki must be open.">
+          <span class="light" aria-hidden="true"></span>
+          <span id="anki-status-text">Checking Anki…</span>
+        </div>
+      </div>
+      <p class="subtitle">Build a prompt, get the cards from your AI chat, and send them straight into Anki.</p>
+
+      <!-- ============ STEP 1 ============ -->
+      <div class="step"><span class="step-num">1</span><h2>Describe the deck</h2></div>
+
+      <div class="field">
+        <label class="label" for="deck-name">Deck name</label>
+        <input type="text" id="deck-name" maxlength="100" autocomplete="off" placeholder="e.g. UKMLA::Cardiology::ACS" />
+        <div class="hint">Optional. If blank, the title from the AI's reply is used. Use <code>::</code> to make subdecks.</div>
+      </div>
+
+      <div class="field">
+        <span class="label" id="count-label">Number of cards</span>
+        <div class="segmented" role="radiogroup" aria-labelledby="count-label">
+          <input type="radio" name="countMode" id="mode-exact" value="exact" checked />
+          <label for="mode-exact">Exact</label>
+          <input type="radio" name="countMode" id="mode-range" value="range" />
+          <label for="mode-range">Range</label>
+        </div>
+        <div id="exact-row">
+          <input type="number" id="card-count" min="1" max="300" value="20" aria-label="Number of cards" />
+        </div>
+        <div id="range-row" class="range-row" hidden>
+          <input type="number" id="min-cards" min="1" max="300" value="15" aria-label="Minimum cards" />
+          <span>to</span>
+          <input type="number" id="max-cards" min="1" max="300" value="40" aria-label="Maximum cards" />
+        </div>
+        <div class="hint" id="count-hint">Between 1 and 300 text cards.</div>
+      </div>
+
+      <div class="field">
+        <label class="label" for="subject">
+          Subject information
+          <span class="counter" id="subject-counter">0 / 20000</span>
+        </label>
+        <textarea id="subject" maxlength="20000"
+          placeholder="e.g. Acute coronary syndrome: presentation, ECG changes, troponin, NICE management. Or paste your lecture notes."></textarea>
+        <div class="hint">A topic, notes or source text. Optional if you add sources or images.</div>
+      </div>
+
+      <div class="field">
+        <span class="label">Documents &amp; videos <span style="font-weight:normal;color:var(--muted)">(optional)</span></span>
+        <div class="dropzone" id="doc-dropzone" tabindex="0" role="button" aria-describedby="doc-hint">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8M8 17h5"/></svg>
+          <div><strong>Click to upload</strong> or drag and drop</div>
+          <div class="hint" id="doc-hint">PDF, Word (.docx), PowerPoint (.pptx), TXT or MD · 25 MB each</div>
+        </div>
+        <input type="file" id="doc-input" accept=".pdf,.docx,.pptx,.txt,.md" multiple hidden />
+        <div class="yt-row">
+          <input type="text" id="yt-url" autocomplete="off" inputmode="url" placeholder="Or paste a YouTube link to use its transcript" aria-label="YouTube link" />
+          <button type="button" id="yt-add">Add</button>
+        </div>
+        <ul class="chips" id="chips" aria-live="polite"></ul>
+        <div class="src-total" id="src-total" hidden></div>
+        <div class="status" id="source-status" role="status" aria-live="polite" style="margin-top:8px;min-height:0"></div>
+        <div class="hint">The text is pulled out here and included in the prompt. YouTube needs captions, and a video can take about 15 seconds to read.</div>
+      </div>
+
+      <div class="field">
+        <div class="checkbox">
+          <input type="checkbox" id="cloze" aria-controls="cloze-options" />
+          <div>
+            <label class="label" for="cloze" style="margin:0">Include cloze deletion cards</label>
+            <div class="hint" style="margin:0">Fill-in-the-blank style, e.g. "First-line for stable angina is {{c1::a beta blocker or CCB}}".</div>
+          </div>
+        </div>
+        <div class="sub-option" id="cloze-options" hidden>
+          <label for="cloze-percent">Proportion of cards that are cloze</label>
+          <select id="cloze-percent">
+            <option value="10">10%</option><option value="20">20%</option><option value="25">25%</option>
+            <option value="30">30%</option><option value="40">40%</option><option value="50" selected>50%</option>
+            <option value="60">60%</option><option value="70">70%</option><option value="75">75%</option>
+            <option value="80">80%</option><option value="90">90%</option><option value="100">100%</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="field">
+        <span class="label">Images for image occlusion <span style="font-weight:normal;color:var(--muted)">(optional)</span></span>
+        <div class="dropzone" id="dropzone" tabindex="0" role="button" aria-describedby="drop-hint">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+          <div><strong>Click to upload</strong> or drag and drop</div>
+          <div class="hint" id="drop-hint">PNG, JPEG, WebP or GIF · up to 10 images · 10 MB each</div>
+        </div>
+        <input type="file" id="file-input" accept="image/png,image/jpeg,image/webp,image/gif" multiple hidden />
+        <div class="thumbs" id="thumbs"></div>
+        <div class="hint">Attach the same images, in the numbered order, to your AI chat. The cards are drawn here from the boxes the AI describes.</div>
+      </div>
+
+      <button type="button" class="btn" id="copy-btn">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+        <span id="copy-label">Copy prompt</span>
+      </button>
+      <div class="status" id="copy-status" role="status" aria-live="polite"></div>
+      <details id="prompt-details">
+        <summary>Show the prompt</summary>
+        <textarea id="prompt-preview" readonly spellcheck="false" aria-label="Generated prompt"></textarea>
+      </details>
+
+      <hr class="divider" />
+
+      <!-- ============ STEP 2 ============ -->
+      <div class="step"><span class="step-num">2</span><h2>Paste the AI's reply</h2></div>
+      <div class="field" style="margin-bottom:0">
+        <label class="label" for="reply" style="position:absolute;left:-9999px">AI reply</label>
+        <textarea id="reply" spellcheck="false" style="min-height:180px; font: 0.82rem/1.4 ui-monospace, Menlo, Consolas, monospace;"
+          placeholder='Paste the whole reply here. It should be a JSON object starting with {"deck_title": …'></textarea>
+        <div class="parse" id="parse" role="status" aria-live="polite">Nothing pasted yet.</div>
+      </div>
+
+      <hr class="divider" />
+
+      <!-- ============ STEP 3 ============ -->
+      <div class="step"><span class="step-num">3</span><h2>Add to Anki</h2></div>
+      <button type="button" class="btn btn-send" id="send-btn" disabled>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/></svg>
+        <span id="send-label">Send to Anki</span>
+      </button>
+      <button type="button" class="btn btn-secondary" id="download-btn" disabled>
+        <span id="download-label">Download .apkg instead</span>
+      </button>
+      <div class="status" id="send-status" role="status" aria-live="polite"></div>
+    </section>
+
+    <!-- Result -->
+    <section class="panel" id="result" hidden aria-live="polite">
+      <div class="result-head">
+        <div class="result-icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg>
+        </div>
+        <div>
+          <h2 id="result-title">Done</h2>
+          <div class="hint" style="margin:0" id="result-sub"></div>
+        </div>
+      </div>
+      <div class="alert" id="result-alert" hidden></div>
+      <div class="stats" id="stats"></div>
+      <ul class="warnings" id="warnings" hidden></ul>
+      <a class="btn btn-secondary" id="result-download" href="#" style="margin-top:0">Download .apkg</a>
+      <details id="preview-wrap">
+        <summary>Preview some cards</summary>
+        <div id="preview"></div>
+      </details>
+    </section>
+  </main>
+
+  <script>
+    const MAX_IMAGES = 10;
+    const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+    const ALLOWED_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif"];
+
+    const $ = (id) => document.getElementById(id);
+    let images = [];          // { file, url }
+    let sources = [];         // { id, name, kind, text, chars, truncated, note, pending }
+    let sourceSeq = 0;
+    const DOC_EXTS = [".pdf", ".docx", ".pptx", ".txt", ".md"];
+    const MAX_SOURCES = 15;
+    const MAX_DOC_BYTES = 25 * 1024 * 1024;
+    const BIG_PROMPT_CHARS = 300000;
+    let reply = null;         // parsed + summarised reply, or null
+    let ankiConnected = false;
+    let busy = false;
+
+    // ======================================================================= prompt builder
+    const RULES = `You are an expert UK medical educator writing Anki flashcards for medical students preparing for the UK Medical Licensing Assessment (UKMLA), covering both the Applied Knowledge Test (AKT) and the Clinical and Professional Skills Assessment (CPSA).
+
+Every card must be HIGH YIELD according to the GMC MLA content map. Prioritise, in this order:
+1. Red flags, emergencies and "must not miss" diagnoses.
+2. First-line investigations and the gold-standard / diagnostic test.
+3. First-line management per current NICE guidance, CKS, SIGN or other UK national guidelines (use UK drug names, UK units such as mmol/L, and UK practice such as 2WW referrals).
+4. Classic presentations, key distinguishing features, and commonly examined associations.
+5. Important complications, contraindications and prescribing safety (BNF-relevant).
+6. Professional, ethical and legal points (GMC Good Medical Practice, capacity, consent, confidentiality) where the subject touches on them.
+
+Avoid trivia, eponyms with no clinical relevance, research-level detail and US-specific practice.
+
+Card-writing rules (minimum information principle):
+- One atomic fact per card. Questions must be unambiguous with a single correct answer.
+- Keep answers short (ideally under 15 words); put supporting context in the "extra" field.
+- Prefer clinical-vignette or "first-line" / "most likely" phrasing where it suits the AKT.
+- Cloze cards: wrap the tested term like {{c1::answer}}. Use c1 only, unless several blanks are genuinely tested together. Never cloze trivial words.
+- Do not repeat the same fact across cards.
+- "ukmla_area" is the MLA content map area of clinical practice (e.g. Cardiovascular, Respiratory, Acute and emergency, Infection, Renal and urology, Neurosciences, Mental health, Obstetrics and gynaecology, Child health, Surgery, Professional knowledge, Applied basic science).
+- "tags": 1-3 short lowercase topic tags, hyphens instead of spaces (e.g. "heart-failure").`;
+
+    const IMAGE_RULES = `For each attached image (anatomy diagram, radiograph, ECG, histology slide, clinical photo, flowchart, etc.), decide which regions, when hidden, make the most HIGH-YIELD image occlusion questions for the UKMLA. Prefer clinically relevant, commonly examined structures and findings (e.g. structures at risk in common surgery, key radiological signs, nerve/vessel relations with clinical consequences) over minor labels. Give 3-10 occlusions per image (fewer if the image is simple).
+
+Bounding boxes:
+- x and y are the top-left corner of the box and width and height its size, ALL expressed in THOUSANDTHS of the image's own width/height. So x=0 is the left edge, x=1000 the right edge, y=0 the top edge, y=1000 the bottom edge; a box covering the whole image would be x=0, y=0, width=1000, height=1000. Use whole numbers.
+- If the image already has TEXT LABELS, box the label text itself (tightly, with a small margin) and use its content as the answer. If there are no text labels, box the structure or finding itself, tightly.
+- Boxes on the same image must not overlap.
+- Look carefully at where things really are and double-check each box before answering.
+- If an image is not medically relevant or has nothing worth occluding, give it an empty "occlusions" list.
+
+For each occlusion give: "answer" (short, as it would be written on a label), "question" (shown on the front, e.g. "Identify the highlighted structure" or a more specific clinical prompt) and "explanation" (one or two sentences on why it matters clinically).`;
+
+    function buildPrompt() {
+      const subject = $("subject").value.trim();
+      const range = $("mode-range").checked;
+      const clozeOn = $("cloze").checked;
+      const pct = Number($("cloze-percent").value);
+      const parts = [RULES, "", "# Task"];
+      const hasText = !!subject || sources.length > 0;
+
+      if (hasText) {
+        parts.push(range
+          ? `Write between ${$("min-cards").value} and ${$("max-cards").value} text cards in total. Choose the number based on how much genuinely high-yield UKMLA material the subject contains - do not pad with low-yield cards to reach the maximum.`
+          : `Write exactly ${$("card-count").value} text cards in total.`);
+        if (!clozeOn) parts.push('All text cards must be basic (front/back) cards; "cloze_cards" must be an empty list.');
+        else if (pct >= 100) parts.push('All text cards must be cloze cards; "basic_cards" must be an empty list.');
+        else parts.push(`About ${pct}% of the text cards should be cloze cards and the rest basic (front/back). Use cloze for facts that read naturally as a sentence (lists, criteria, drug-condition pairs) and basic for question-and-answer facts.`);
+        parts.push("Give the deck a short descriptive title (under 60 characters) as \"deck_title\".");
+        parts.push(`Base the cards on the ${[subject && "subject information", sources.length && "source material"].filter(Boolean).join(" and ")} below. ` +
+          "Pick out only what is high yield for the UKMLA and ignore filler (administrative slides, references, introductions, small talk in videos). " +
+          "Where the material is wrong or out of date against current UK guidance, use the correct UK guidance instead.");
+        if (subject) parts.push("", "<subject>", subject, "</subject>");
+        if (sources.length) {
+          parts.push("", "# Source material");
+          sources.forEach((s) => {
+            const name = s.name.replace(/["\n\r]+/g, " ");
+            parts.push("", `<source name="${name}" type="${s.kind}">`, s.text, "</source>");
+          });
+        }
+      } else {
+        parts.push('No subject text or source material was given, so "basic_cards" and "cloze_cards" must be empty lists. Give the deck a short descriptive title (under 60 characters) as "deck_title".');
+      }
+
+      if (images.length) {
+        parts.push("", "# Images",
+          `I have attached ${images.length} image${images.length > 1 ? "s" : ""}, in this order:`,
+          ...images.map((im, i) => `Image ${i + 1}: ${im.file.name}`),
+          "", IMAGE_RULES);
+      } else {
+        parts.push('No images are attached, so "images" must be an empty list.');
+      }
+
+      parts.push("", "# Output format",
+        "Reply with ONE JSON object and nothing else: no introduction, no explanation, and no markdown code fences. It must have exactly this shape:",
+        `{
+  "deck_title": "Short title",
+  "basic_cards": [
+    {"front": "Question?", "back": "Short answer", "extra": "Optional supporting context", "ukmla_area": "Cardiovascular", "tags": ["acs"]}
+  ],
+  "cloze_cards": [
+    {"text": "First-line antiplatelet in ACS is {{c1::aspirin 300 mg}} loading dose", "extra": "Optional supporting context", "ukmla_area": "Cardiovascular", "tags": ["acs"]}
+  ],
+  "images": [
+    {"image_number": 1, "image_title": "Short title", "ukmla_area": "Cardiovascular", "occlusions": [
+      {"answer": "Left atrium", "question": "Identify the highlighted structure", "explanation": "Why it matters clinically", "x": 120, "y": 340, "width": 150, "height": 60}
+    ]}
+  ]
+}`,
+        "Use empty lists for any section that does not apply. The JSON must be valid: escape any double quotes inside strings and use no trailing commas.");
+      return parts.join("\n");
+    }
+
+    // ======================================================================= helpers
+    function setStatus(id, msg, type = "") {
+      const el = $(id);
+      el.textContent = msg;
+      el.className = "status" + (type ? " " + type : "");
+    }
+
+    function validInt(n) { return Number.isInteger(n) && n >= 1 && n <= 300; }
+
+    function validatePromptInputs() {
+      const subject = $("subject").value.trim();
+      if (sources.some((s) => s.pending)) return "Still reading your documents or videos. Wait a moment, then try again.";
+      if (!subject && sources.length === 0 && images.length === 0) {
+        $("subject").focus();
+        return "Enter some subject information, add a document or video, or add at least one image first.";
+      }
+      if (subject || sources.length) {
+        if ($("mode-range").checked) {
+          const min = Number($("min-cards").value), max = Number($("max-cards").value);
+          if (!validInt(min) || !validInt(max)) { $("min-cards").focus(); return "Range values must be whole numbers between 1 and 300."; }
+          if (min > max) { $("min-cards").focus(); return "The minimum can't be larger than the maximum."; }
+        } else if (!validInt(Number($("card-count").value))) {
+          $("card-count").focus();
+          return "Number of cards must be a whole number between 1 and 300.";
+        }
+      }
+      return null;
+    }
+
+    // ======================================================================= form widgets
+    document.querySelectorAll('input[name="countMode"]').forEach((r) =>
+      r.addEventListener("change", () => {
+        const range = $("mode-range").checked;
+        $("exact-row").hidden = range;
+        $("range-row").hidden = !range;
+        $("count-hint").textContent = range
+          ? "The AI picks a number in this range based on how much high-yield material there is."
+          : "Between 1 and 300 text cards.";
+      })
+    );
+    $("cloze").addEventListener("change", (e) => { $("cloze-options").hidden = !e.target.checked; });
+    $("subject").addEventListener("input", (e) => {
+      $("subject-counter").textContent = `${e.target.value.length} / 20000`;
+    });
+
+    // ---- image upload
+    const dropzone = $("dropzone");
+    const fileInput = $("file-input");
+    dropzone.addEventListener("click", () => fileInput.click());
+    dropzone.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); fileInput.click(); }
+    });
+    fileInput.addEventListener("change", () => { addFiles(fileInput.files); fileInput.value = ""; });
+    ["dragenter", "dragover"].forEach((ev) => dropzone.addEventListener(ev, (e) => { e.preventDefault(); dropzone.classList.add("dragover"); }));
+    ["dragleave", "drop"].forEach((ev) => dropzone.addEventListener(ev, (e) => { e.preventDefault(); dropzone.classList.remove("dragover"); }));
+    dropzone.addEventListener("drop", (e) => addFiles(e.dataTransfer.files));
+
+    function addFiles(fileList) {
+      const rejected = [];
+      for (const file of fileList) {
+        if (images.length >= MAX_IMAGES) { rejected.push(`only ${MAX_IMAGES} images allowed`); break; }
+        if (!ALLOWED_TYPES.includes(file.type)) { rejected.push(`${file.name} is not a supported image`); continue; }
+        if (file.size > MAX_IMAGE_BYTES) { rejected.push(`${file.name} is over 10 MB`); continue; }
+        images.push({ file, url: URL.createObjectURL(file) });
+      }
+      renderThumbs();
+      setStatus("copy-status", rejected.length ? "Skipped: " + rejected.join("; ") + "." : "", rejected.length ? "error" : "");
+    }
+
+    function renderThumbs() {
+      const wrap = $("thumbs");
+      wrap.replaceChildren();
+      images.forEach((img, i) => {
+        const div = document.createElement("div");
+        div.className = "thumb";
+        const el = document.createElement("img");
+        el.src = img.url; el.alt = img.file.name;
+        const num = document.createElement("span");
+        num.className = "num"; num.textContent = i + 1;
+        const name = document.createElement("div");
+        name.className = "name"; name.textContent = img.file.name;
+        const rm = document.createElement("button");
+        rm.type = "button"; rm.textContent = "×";
+        rm.setAttribute("aria-label", `Remove ${img.file.name}`);
+        rm.addEventListener("click", () => {
+          URL.revokeObjectURL(img.url);
+          images.splice(i, 1);
+          renderThumbs();
+        });
+        div.append(el, num, name, rm);
+        wrap.append(div);
+      });
+      parseReply();   // occlusion counts depend on which images are attached
+    }
+
+    // ======================================================================= documents & videos
+    const docDrop = $("doc-dropzone");
+    const docInput = $("doc-input");
+    docDrop.addEventListener("click", () => docInput.click());
+    docDrop.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); docInput.click(); }
+    });
+    docInput.addEventListener("change", () => { addDocs(docInput.files); docInput.value = ""; });
+    ["dragenter", "dragover"].forEach((ev) => docDrop.addEventListener(ev, (e) => { e.preventDefault(); docDrop.classList.add("dragover"); }));
+    ["dragleave", "drop"].forEach((ev) => docDrop.addEventListener(ev, (e) => { e.preventDefault(); docDrop.classList.remove("dragover"); }));
+    docDrop.addEventListener("drop", (e) => addDocs(e.dataTransfer.files));
+
+    function addDocs(fileList) {
+      const problems = [];
+      for (const file of fileList) {
+        const ext = (file.name.match(/\.[^.]+$/) || [""])[0].toLowerCase();
+        if (sources.length >= MAX_SOURCES) { problems.push(`only ${MAX_SOURCES} sources allowed`); break; }
+        if (ext === ".doc" || ext === ".ppt") { problems.push(`${file.name}: re-save as ${ext}x or PDF first`); continue; }
+        if (!DOC_EXTS.includes(ext)) { problems.push(`${file.name} isn't a supported type`); continue; }
+        if (file.size > MAX_DOC_BYTES) { problems.push(`${file.name} is over 25 MB`); continue; }
+        readSource(file.name, ext.slice(1), () => { const fd = new FormData(); fd.append("file", file, file.name); return fd; });
+      }
+      setStatus("source-status", problems.length ? "Skipped: " + problems.join("; ") + "." : "", problems.length ? "error" : "");
+    }
+
+    function addYoutube() {
+      const url = $("yt-url").value.trim();
+      if (!url) return;
+      if (sources.length >= MAX_SOURCES) return setStatus("source-status", `Only ${MAX_SOURCES} sources allowed.`, "error");
+      if (!/youtu\.?be/i.test(url)) return setStatus("source-status", "That doesn't look like a YouTube link.", "error");
+      $("yt-url").value = "";
+      setStatus("source-status", "");
+      readSource("YouTube video", "youtube", () => { const fd = new FormData(); fd.append("url", url); return fd; });
+    }
+    $("yt-add").addEventListener("click", addYoutube);
+    $("yt-url").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); addYoutube(); } });
+
+    async function readSource(label, kindGuess, makeBody) {
+      const item = { id: ++sourceSeq, name: label, kind: kindGuess, text: "", chars: 0, pending: true };
+      sources.push(item);
+      renderSources();
+      try {
+        const res = await fetch("/api/extract", { method: "POST", body: makeBody() });
+        let data = {};
+        try { data = await res.json(); } catch {}
+        if (!res.ok) throw new Error(data.error || `Request failed (${res.status}).`);
+        if (sources.includes(item)) {   // the user may have removed it while it was loading
+          Object.assign(item, { name: data.name, kind: data.kind, text: data.text, chars: data.chars,
+                                truncated: data.truncated, limit: data.limit, note: data.note, pending: false });
+        }
+      } catch (err) {
+        sources = sources.filter((s) => s !== item);
+        setStatus("source-status", `${label}: ${err.message === "Failed to fetch" ? "couldn't reach the server." : err.message}`, "error");
+      }
+      renderSources();
+    }
+
+    const KIND_LABEL = { youtube: "YouTube", text: "TXT" };
+    function renderSources() {
+      const list = $("chips");
+      list.replaceChildren();
+      sources.forEach((s) => {
+        const li = document.createElement("li");
+        li.className = "chip" + (s.pending ? " pending" : "");
+        const kind = document.createElement("span");
+        kind.className = "kind"; kind.textContent = KIND_LABEL[s.kind] || s.kind.toUpperCase();
+        const body = document.createElement("div");
+        body.className = "body";
+        const title = document.createElement("div");
+        title.className = "title"; title.textContent = s.name; title.title = s.name;
+        const meta = document.createElement("div");
+        meta.className = "meta";
+        if (s.pending) {
+          meta.textContent = s.kind === "youtube" ? "Reading transcript… (about 15 seconds)" : "Reading…";
+        } else {
+          meta.append(document.createTextNode(`${s.chars.toLocaleString()} characters`));
+          if (s.truncated) {
+            const w = document.createElement("span");
+            w.className = "warn"; w.textContent = ` · too long, only the first ${(s.limit || 0).toLocaleString()} kept`;
+            meta.append(w);
+          }
+          if (s.note) {
+            const n = document.createElement("span");
+            n.textContent = ` · ${s.note}`;
+            meta.append(n);
+          }
+        }
+        body.append(title, meta);
+        li.append(kind, body);
+        if (s.pending) { const sp = document.createElement("span"); sp.className = "spinner"; li.append(sp); }
+        const rm = document.createElement("button");
+        rm.type = "button"; rm.textContent = "×"; rm.setAttribute("aria-label", `Remove ${s.name}`);
+        rm.addEventListener("click", () => { sources = sources.filter((x) => x !== s); renderSources(); });
+        li.append(rm);
+        list.append(li);
+      });
+
+      const done = sources.filter((s) => !s.pending);
+      const total = done.reduce((n, s) => n + s.chars, 0);
+      const tot = $("src-total");
+      tot.hidden = done.length === 0;
+      tot.className = "src-total" + (total > BIG_PROMPT_CHARS ? " warn" : "");
+      tot.textContent = `${done.length} source${done.length === 1 ? "" : "s"} · ${total.toLocaleString()} characters (about ${Math.max(1, Math.round(total / 4000))}k tokens)` +
+        (total > BIG_PROMPT_CHARS ? ". That's very large and some AI chats will reject a prompt this size. Remove a source or two." : "");
+    }
+
+    // ======================================================================= step 1: copy prompt
+    $("copy-btn").addEventListener("click", async () => {
+      const error = validatePromptInputs();
+      if (error) return setStatus("copy-status", error, "error");
+
+      const text = buildPrompt();
+      $("prompt-preview").value = text;
+      const imgNote = images.length
+        ? ` Attach the ${images.length} image${images.length > 1 ? "s" : ""} in the numbered order.`
+        : "";
+      const sizeNote = text.length > BIG_PROMPT_CHARS
+        ? ` Heads up: the prompt is ${text.length.toLocaleString()} characters, which some chats won't accept.` : "";
+      try {
+        await navigator.clipboard.writeText(text);
+        $("copy-label").textContent = "Copied ✓";
+        setTimeout(() => { $("copy-label").textContent = "Copy prompt"; }, 2000);
+        setStatus("copy-status", "Prompt copied. Paste it into your AI chat." + imgNote + " Then paste its reply into step 2." + sizeNote, "ok");
+      } catch {
+        $("prompt-details").open = true;
+        $("prompt-preview").focus();
+        $("prompt-preview").select();
+        setStatus("copy-status", "Couldn't reach the clipboard. The prompt is selected below, so press Cmd/Ctrl+C." + imgNote, "error");
+      }
+    });
+
+    // ======================================================================= step 2: parse reply
+    function extractJson(text) {
+      let t = text.trim();
+      const fence = t.match(/```(?:json)?\s*([\s\S]*?)```/i);
+      if (fence) t = fence[1].trim();
+      const a = t.indexOf("{"), b = t.lastIndexOf("}");
+      if (a < 0 || b < a) throw new Error("No JSON object found. Ask the AI to reply with only the JSON.");
+      try {
+        return JSON.parse(t.slice(a, b + 1));
+      } catch (e) {
+        throw new Error("That isn't valid JSON (" + e.message + "). Ask the AI to fix the JSON and reply again.");
+      }
+    }
+
+    const arr = (v) => (Array.isArray(v) ? v : []);
+
+    function parseReply() {
+      const raw = $("reply").value;
+      const box = $("parse");
+      reply = null;
+      if (!raw.trim()) {
+        box.className = "parse"; box.textContent = "Nothing pasted yet.";
+        return updateControls();
+      }
+      try {
+        const obj = extractJson(raw);
+        const basic = arr(obj.basic_cards).filter((c) => c && c.front && c.back).length;
+        const cloze = arr(obj.cloze_cards).filter((c) => c && typeof c.text === "string" && /\{\{c\d+::/.test(c.text)).length;
+        let occ = 0, orphaned = 0;
+        arr(obj.images).forEach((im) => {
+          const n = Number(im && im.image_number);
+          const count = arr(im && im.occlusions).length;
+          if (Number.isInteger(n) && n >= 1 && n <= images.length) occ += count; else orphaned += count;
+        });
+        const total = basic + cloze + occ;
+        const orphanNote = `The reply has ${orphaned} occlusion(s) for images that aren't added on this page. Add the images in step 1, in the same order you gave the AI.`;
+        if (total === 0) throw new Error(orphaned ? orphanNote : "The JSON was read, but it contains no cards.");
+
+        const notes = orphaned ? [orphanNote] : [];
+        reply = { obj, total };
+        box.className = "parse ok";
+        box.replaceChildren(document.createTextNode(
+          `✓ Found ${total} card${total === 1 ? "" : "s"}: ${basic} basic · ${cloze} cloze · ${occ} image occlusion`));
+        notes.forEach((n) => { const s = document.createElement("span"); s.className = "note"; s.textContent = n; box.append(s); });
+      } catch (e) {
+        box.className = "parse bad"; box.textContent = e.message;
+      }
+      updateControls();
+    }
+    $("reply").addEventListener("input", parseReply);
+
+    // ======================================================================= step 3: send / download
+    function updateControls() {
+      const ready = !!reply && !busy;
+      $("send-btn").disabled = !(ready && ankiConnected);
+      $("download-btn").disabled = !ready;
+      $("send-btn").title = ready && !ankiConnected ? "Open Anki (with AnkiConnect installed) to enable this." : "";
+      if (!busy) {
+        const hint = !reply ? "" : ankiConnected ? ""
+          : "Anki isn't connected. Open Anki with the AnkiConnect add-on, or download the .apkg and import it yourself.";
+        if (!$("send-status").classList.contains("error") && !$("send-status").classList.contains("ok")) setStatus("send-status", hint);
+      }
+    }
+
+    function setBusy(which) {
+      busy = !!which;
+      for (const [btn, labelId, idle] of [["send-btn", "send-label", "Send to Anki"], ["download-btn", "download-label", "Download .apkg instead"]]) {
+        $(btn).querySelector(".spinner")?.remove();
+        $(labelId).textContent = idle;
+      }
+      if (which) {
+        const [btn, labelId, text] = which === "send"
+          ? ["send-btn", "send-label", "Sending…"] : ["download-btn", "download-label", "Building…"];
+        const s = document.createElement("span"); s.className = "spinner";
+        $(btn).prepend(s);
+        $(labelId).textContent = text;
+      }
+      updateControls();
+    }
+
+    async function build(sendToAnki) {
+      if (!reply || busy) return;
+      setBusy(sendToAnki ? "send" : "download");
+      setStatus("send-status", "");
+      $("result").hidden = true;
+
+      const fd = new FormData();
+      fd.append("reply", JSON.stringify(reply.obj));
+      fd.append("deckName", $("deck-name").value.trim());
+      fd.append("sendToAnki", sendToAnki ? "true" : "false");
+      images.forEach((img) => fd.append("images", img.file, img.file.name));
+
+      try {
+        const res = await fetch("/api/build", { method: "POST", body: fd });
+        let data = {};
+        try { data = await res.json(); } catch {}
+        if (!res.ok) throw new Error(data.error || `Request failed (${res.status}).`);
+
+        showResult(data, sendToAnki);
+        if (!sendToAnki) {
+          const a = document.createElement("a");
+          a.href = data.downloadUrl; a.download = data.filename;
+          document.body.append(a); a.click(); a.remove();
+        }
+        if (sendToAnki && data.sent) setStatus("send-status", "Sent. Check Anki for your new cards.", "ok");
+        else if (sendToAnki) setStatus("send-status", data.ankiError || "Anki didn't accept the deck.", "error");
+        else setStatus("send-status", `Downloaded ${data.filename}.`, "ok");
+      } catch (err) {
+        setStatus("send-status", err.message === "Failed to fetch" ? "Couldn't reach the server. Is it running?" : err.message, "error");
+      } finally {
+        setBusy(null);
+      }
+    }
+    $("send-btn").addEventListener("click", () => build(true));
+    $("download-btn").addEventListener("click", () => build(false));
+    $("reply").addEventListener("input", () => setStatus("send-status", ""));
+
+    // ======================================================================= result panel
+    function showResult(data, attemptedSend) {
+      const ok = !attemptedSend || data.sent;
+      $("result-title").textContent = attemptedSend ? (data.sent ? "Sent to Anki" : "Built, but not added to Anki") : "Deck built";
+      $("result-sub").textContent = `${data.title} · ${data.filename}`;
+      const alertBox = $("result-alert");
+      alertBox.hidden = ok;
+      alertBox.textContent = ok ? "" : (data.ankiError || "Anki didn't accept the deck.") + " You can still download the .apkg below and import it yourself.";
+
+      const c = data.counts || {};
+      const total = (c.basic || 0) + (c.cloze || 0) + (c.occlusion || 0);
+      const stats = [["Total cards", total], ["Basic", c.basic || 0], ["Cloze", c.cloze || 0], ["Image occlusion", c.occlusion || 0]];
+      $("stats").replaceChildren(...stats.map(([label, n]) => {
+        const d = document.createElement("div"); d.className = "stat";
+        const b = document.createElement("b"); b.textContent = n;
+        const s = document.createElement("span"); s.textContent = label;
+        d.append(b, s); return d;
+      }));
+
+      const warnings = data.warnings || [];
+      $("warnings").hidden = warnings.length === 0;
+      $("warnings").replaceChildren(...warnings.map((w) => { const li = document.createElement("li"); li.textContent = w; return li; }));
+
+      $("result-download").href = data.downloadUrl;
+      $("result-download").setAttribute("download", data.filename);
+
+      const preview = data.preview || [];
+      $("preview-wrap").hidden = preview.length === 0;
+      $("preview").replaceChildren(...preview.map((p) => {
+        const d = document.createElement("div"); d.className = "preview-card";
+        const t = document.createElement("div"); t.className = "type"; t.textContent = p.type;
+        const f = document.createElement("div"); f.textContent = p.front;
+        d.append(t, f);
+        if (p.back) { const b = document.createElement("div"); b.className = "back"; b.textContent = p.back; d.append(b); }
+        return d;
+      }));
+
+      $("result").hidden = false;
+      $("result").scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+
+    // ======================================================================= Anki connection light
+    async function checkAnki() {
+      let connected = false;
+      try {
+        const res = await fetch("/api/anki-status", { cache: "no-store" });
+        ({ connected } = await res.json());
+      } catch {}
+      ankiConnected = !!connected;
+      $("anki-status").dataset.state = connected ? "connected" : "disconnected";
+      $("anki-status-text").textContent = connected ? "Anki connected" : "Anki not connected";
+      updateControls();
+    }
+    checkAnki();
+    setInterval(() => { if (!document.hidden) checkAnki(); }, 5000);
+    document.addEventListener("visibilitychange", () => { if (!document.hidden) checkAnki(); });
+  </script>
+</body>
+</html>

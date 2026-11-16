@@ -1,0 +1,37 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Start Anki Generator",
+      "type": "shell",
+      "command": "./Start\\ Anki\\ Generator.command",
+      "isBackground": true,
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
+      },
+      "runOptions": {
+        "runOn": "folderOpen"
+      },
+      "problemMatcher": {
+        "owner": "anki-generator",
+        "pattern": {
+          "regexp": "^(ERROR|Traceback).*$",
+          "message": 0
+        },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": "^Starting Anki Generator",
+          "endsPattern": "Anki Generator running at|already running"
+        }
+      }
+    },
+    {
+      "label": "Stop Anki Generator",
+      "type": "shell",
+      "command": "lsof -tiTCP:8000 -sTCP:LISTEN | xargs kill || true",
+      "problemMatcher": []
+    }
+  ]
+}
